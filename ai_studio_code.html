@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今天吃什麼？轉盤大決定</title>
+    <style>
+        :root {
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #f7f9fc;
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        /* 過濾器樣式 */
+        .filters {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin: 0 auto 20px auto;
+            max-width: 400px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .filter-item input {
+            margin-right: 5px;
+            accent-color: var(--primary-color);
+            width: 18px;
+            height: 18px;
+        }
+
+        /* 按鈕區 */
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-direct {
+            background-color: white;
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .btn-spin {
+            background-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* 轉盤區域 */
+        .wheel-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 0 auto 20px auto;
+            display: none; /* 初始隱藏 */
+        }
+
+        #wheelCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .pointer {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 25px solid #333;
+            z-index: 10;
+        }
+
+        /* 結果卡片 */
+        #result {
+            background: white;
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            display: none;
+            text-align: left;
+        }
+
+        #result h2 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+
+        .rating {
+            color: #f1c40f;
+            font-weight: bold;
+        }
+
+        .nav-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            background-color: #4285F4;
+            color: white;
+            text-decoration: none;
+            padding: 10px 0;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        #loading {
+            display: none;
+            color: #666;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🍽️ 今天吃什麼？</h1>
+    
+    <!-- 過濾器 -->
+    <div class="filters">
+        <label class="filter-item">
+            <input type="checkbox" id="filter-snack"> 只要吃小吃
+        </label>
+        <label class="filter-item">
+            <input type="checkbox" id="filter-distance"> 不要超過 500m
+        </label>
+        <label class="filter-item">
+            <input type="checkbox" id="filter-rating" checked> 4 顆星以上
+        </label>
+    </div>
+
+    <!-- 操作按鈕 -->
+    <div class="actions">
+        <button class="btn-direct" onclick="findFood(false)">直接幫我選</button>
+        <button class="btn-spin" onclick="findFood(true)">🎡 轉盤抽抽樂</button>
+    </div>
+
+    <div id="loading">正在搜尋附近美食...<br>(請允許定位權限)</div>
+
+    <!-- 轉盤 -->
+    <div class="wheel-container" id="wheelContainer">
+        <div class="pointer"></div>
+        <canvas id="wheelCanvas" width="500" height="500"></canvas>
+    </div>
+
+    <!-- 結果顯示 -->
+    <div id="result">
+        <h2 id="res-name">餐廳名稱</h2>
+        <p>⭐ <span id="res-rating" class="rating">0.0</span> (<span id="res-total">0</span> 則評論)</p>
+        <p>📍 <span id="res-address">地址...</span></p>
+        <p>🚶 距離：約 <span id="res-distance">0</span> 公尺</p>
+        <a id="res-link" href="#" target="_blank" class="nav-btn">Google Map 導航</a>
+    </div>
+
+    <!-- 隱藏的地圖容器，Places Service 需要 -->
+    <div id="map" style="display:none;"></div>
+
+    <!-- 引入 Google Maps API -->
+    <!-- ⚠️ 請將 YOUR_GOOGLE_API_KEY 替換為你的真實 API 金鑰 ⚠️ -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_API_KEY&libraries=places&language=zh-TW"></script>
+
+    <script>
+        let map;
+        let service;
+        let currentPlaceList = [];
+        let userLat, userLng;
+        
+        // 轉盤相關變數
+        let wheelCanvas = document.getElementById('wheelCanvas');
+        let ctx = wheelCanvas.getContext('2d');
+        let startAngle = 0;
+        let arc = 0;
+        let spinTimeout = null;
+        let spinAngleStart = 10;
+        let spinTime = 0;
+        let spinTimeTotal = 0;
+        let isSpinning = false;
+
+        // 初始化 Google Maps Service
+        function initService() {
+            // 創建一個虛擬地圖中心，為了初始化 PlacesService
+            const center = new google.maps.LatLng(25.0330, 121.5654);
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: center,
+                zoom: 15
+            });
+            service = new google.maps.places.PlacesService(map);
+        }
+
+        // 主功能入口
+        function findFood(useWheel) {
+            if (isSpinning) return; // 防止重複點擊
+
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('wheelContainer').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            // 1. 獲取定位
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLat = position.coords.latitude;
+                        userLng = position.coords.longitude;
+                        searchNearby(useWheel);
+                    },
+                    () => {
+                        alert("無法獲取您的位置，請確認瀏覽器權限。");
+                        document.getElementById('loading').style.display = 'none';
+                    }
+                );
+            } else {
+                alert("您的瀏覽器不支援地理定位。");
+            }
+        }
+
+        // 2. 搜尋附近餐廳
+        function searchNearby(useWheel) {
+            if (!service) initService();
+
+            const filterSnack = document.getElementById('filter-snack').checked;
+            const filterDist500 = document.getElementById('filter-distance').checked;
+            
+            const radius = filterDist500 ? 500 : 1000; // 預設 1000m
+            
+            const request = {
+                location: new google.maps.LatLng(userLat, userLng),
+                radius: radius,
+                type: 'restaurant',
+                openNow: true, // 只找有開的
+            };
+
+            // 如果選了小吃，增加關鍵字搜尋
+            if (filterSnack) {
+                request.keyword = '小吃';
+            }
+
+            service.nearbySearch(request, (results, status) => {
+                document.getElementById('loading').style.display = 'none';
+
+                if (status === google.maps.places.PlacesServiceStatus.OK && results.length > 0) {
+                    // 3. 客戶端過濾 (評分)
+                    const filterRating = document.getElementById('filter-rating').checked;
+                    
+                    let validPlaces = results.filter(place => {
+                        // 過濾掉沒評分的
+                        if (!place.rating) return false;
+                        // 過濾星級
+                        if (filterRating && place.rating < 4.0) return false;
+                        return true;
+                    });
+
+                    if (validPlaces.length === 0) {
+                        alert("找不到符合條件的餐廳，請放寬篩選條件試試！");
+                        return;
+                    }
+
+                    currentPlaceList = validPlaces;
+
+                    if (useWheel) {
+                        // 為了轉盤好看，最多取前 8-10 間 (或隨機取 8 間)
+                        if (currentPlaceList.length > 10) {
+                            // 洗牌後取前 10
+                            currentPlaceList = currentPlaceList.sort(() => 0.5 - Math.random()).slice(0, 10);
+                        }
+                        setupWheel();
+                    } else {
+                        // 直接隨機選一間
+                        const randomPlace = validPlaces[Math.floor(Math.random() * validPlaces.length)];
+                        showResult(randomPlace);
+                    }
+
+                } else {
+                    alert("附近找不到餐廳！");
+                }
+            });
+        }
+
+        // --- 轉盤邏輯 ---
+
+        function setupWheel() {
+            document.getElementById('wheelContainer').style.display = 'block';
+            arc = Math.PI * 2 / currentPlaceList.length;
+            drawWheel();
+            spin(); // 自動開始轉
+        }
+
+        function drawWheel() {
+            if (!wheelCanvas.getContext) return;
+            
+            const outsideRadius = 250;
+            const textRadius = 190;
+            const insideRadius = 50;
+            const cx = 250;
+            const cy = 250;
+
+            ctx.clearRect(0, 0, 500, 500);
+
+            // 定義柔和的顏色盤
+            const colors = ["#FF6B6B", "#FFD93D", "#6BCB77", "#4D96FF", "#F473B9", "#845EC2"];
+
+            for (let i = 0; i < currentPlaceList.length; i++) {
+                const angle = startAngle + i * arc;
+                ctx.fillStyle = colors[i % colors.length];
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, outsideRadius, angle, angle + arc, false);
+                ctx.arc(cx, cy, insideRadius, angle + arc, angle, true);
+                ctx.stroke();
+                ctx.fill();
+
+                ctx.save();
+                ctx.shadowColor = "rgba(0,0,0,0)";
+                ctx.fillStyle = "#FFF";
+                ctx.font = "bold 24px Helvetica, Arial"; // 字體放大
+                ctx.translate(cx + Math.cos(angle + arc / 2) * textRadius, 
+                              cy + Math.sin(angle + arc / 2) * textRadius);
+                ctx.rotate(angle + arc / 2 + Math.PI);
+                
+                let text = currentPlaceList[i].name;
+                if (text.length > 8) text = text.substring(0, 7) + "...";
+                ctx.fillText(text, -ctx.measureText(text).width / 2, 0);
+                ctx.restore();
+            }
+        }
+
+        function spin() {
+            isSpinning = true;
+            spinAngleStart = Math.random() * 10 + 20; // 隨機初始速度
+            spinTime = 0;
+            spinTimeTotal = Math.random() * 3000 + 4000; // 轉 4~7 秒
+            rotateWheel();
+        }
+
+        function rotateWheel() {
+            spinTime += 30;
+            if (spinTime >= spinTimeTotal) {
+                stopRotateWheel();
+                return;
+            }
+            // 緩動函數 (Ease Out)
+            const spinAngle = spinAngleStart - (easeOut(spinTime, 0, spinAngleStart, spinTimeTotal));
+            startAngle += (spinAngle * Math.PI / 180);
+            drawWheel();
+            spinTimeout = requestAnimationFrame(rotateWheel);
+        }
+
+        function stopRotateWheel() {
+            cancelAnimationFrame(spinTimeout);
+            isSpinning = false;
+            
+            // 計算指針停在哪一個項目
+            const degrees = startAngle * 180 / Math.PI + 90;
+            const arcd = arc * 180 / Math.PI;
+            const index = Math.floor((360 - degrees % 360) / arcd);
+            
+            ctx.save();
+            ctx.font = 'bold 50px Helvetica, Arial'; // 停止時顯示大字
+            const text = currentPlaceList[index].name;
+            // 可以在轉盤中間顯示結果，或者直接顯示下方卡片
+            ctx.restore();
+
+            // 延遲一下顯示詳細資訊
+            setTimeout(() => {
+                showResult(currentPlaceList[index]);
+                document.getElementById('wheelContainer').style.display = 'none'; // 轉完隱藏轉盤，顯示結果
+            }, 500);
+        }
+
+        function easeOut(t, b, c, d) {
+            const ts = (t /= d) * t;
+            const tc = ts * t;
+            return b + c * (tc + -3 * ts + 3 * t);
+        }
+
+        // --- 顯示結果 ---
+
+        function showResult(place) {
+            const resDiv = document.getElementById('result');
+            resDiv.style.display = 'block';
+            
+            document.getElementById('res-name').innerText = place.name;
+            document.getElementById('res-rating').innerText = place.rating || "無";
+            document.getElementById('res-total').innerText = place.user_ratings_total || "0";
+            document.getElementById('res-address').innerText = place.vicinity || "地址不詳";
+            
+            // 計算簡單直線距離 (Google Places API 不會直接給距離，需自行計算)
+            const R = 6371e3; // 地球半徑
+            const φ1 = userLat * Math.PI/180;
+            const φ2 = place.geometry.location.lat() * Math.PI/180;
+            const Δφ = (place.geometry.location.lat() - userLat) * Math.PI/180;
+            const Δλ = (place.geometry.location.lng() - userLng) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const d = Math.round(R * c); // 公尺
+
+            document.getElementById('res-distance').innerText = d;
+
+            // 設定導航按鈕
+            const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.geometry.location.lat()},${place.geometry.location.lng()}`;
+            document.getElementById('res-link').href = navUrl;
+            
+            // 平滑捲動到結果
+            resDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+    </script>
+</body>
+</html>
